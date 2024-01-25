@@ -17,4 +17,4 @@ end
 local bytecode = file:read("*a")
 file:close()
 
-fithree.luaF_dispatch(bytecode, getfenv(0))(upk(arg, 2))
+fithree.luaF_dispatch(bytecode, (_ENV or getfenv(0)))(upk(arg, 2))

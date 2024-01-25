@@ -2,7 +2,8 @@ local luaF_newLclosure; -- makes a new closure
 local luaF_dispatch; -- custom quick dispatching
 local luaU_undump; -- gets closure from bytecode
 local luaF_wrap; -- custom wrapping
-local bit = bit32 or bit; -- MUST support a 32 bit bitlib
+local get_state; -- get currently executing thread's state. (for C-like functions)
+local bit = bit32 or bit or require('bit32'); -- MUST support a 32 bit bitlib
 -- Note on the bit lib, it does not matter whether it's in C
 -- or a Lua module, so long as it does what it's supposed to.
 -- Report any bugs on the GitHub issues page for https://www.github.com/Rerumu/FiThree
@@ -353,6 +354,14 @@ do
 		return select('#', ...), {...};
 	end
 
+	local states = {}
+
+	function get_state()
+		if coroutine~=nil then
+			return states[coroutine.running() or -1]
+		end
+	end
+
 	local function luaV_execute(frame)
 		local cl = frame.lclosure;
 		local stack = frame.stack;
@@ -363,6 +372,15 @@ do
 		local pc = 0;
 
 		local openupval = {};
+
+		if coroutine~=nil then
+			states[coroutine.running() or -1] = {
+				frame=frame,
+				upvals=openupval,
+				top=function(a) if a~=nil then top=a end; return top end,
+				pc=function(a) if a~=nil then pc=a end; return pc end
+			}
+		end
 
 		local function setobj(idx, val)
 			if idx > top then
@@ -1008,5 +1026,6 @@ return {
 	luaF_newLclosure = luaF_newLclosure,
 	luaF_dispatch = luaF_dispatch,
 	luaU_undump = luaU_undump,
-	luaF_wrap = luaF_wrap
+	luaF_wrap = luaF_wrap,
+	get_state = get_state
 };
