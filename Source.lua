@@ -2,7 +2,9 @@ local luaF_newLclosure; -- makes a new closure
 local luaF_dispatch; -- custom quick dispatching
 local luaU_undump; -- gets closure from bytecode
 local luaF_wrap; -- custom wrapping
+local luaV_execute; -- execute a frame
 local get_state; -- get currently executing thread's state. (for C-like functions)
+local get_state_from_frame; -- from frame
 local bit = bit32 or bit or require('bit32'); -- MUST support a 32 bit bitlib
 -- Note on the bit lib, it does not matter whether it's in C
 -- or a Lua module, so long as it does what it's supposed to.
@@ -355,32 +357,53 @@ do
 	end
 
 	local states = {}
+	local frame_to_extra = {}
 
 	function get_state()
 		if coroutine~=nil then
-			return states[coroutine.running() or -1]
+			local s = states[coroutine.running() or -1]
+			if s then return s, frame_to_extra[s.frame] end
+			return s
 		end
 	end
+	function get_state_from_frame(L)
+    return frame_to_extra[L]
+	end
 
-	local function luaV_execute(frame)
+	function luaV_execute(frame,setup)
 		local cl = frame.lclosure;
 		local stack = frame.stack;
 		local upvals = cl.upvals;
 		local code = cl.p.code;
 		local k = cl.p.k;
-		local top = 0;
-		local pc = 0;
+		local top,pc,openupval;
 
-		local openupval = {};
-
-		if coroutine~=nil then
-			states[coroutine.running() or -1] = {
-				frame=frame,
+		-- "resume" a frame
+		if frame_to_extra[frame] then
+			local fte = frame_to_extra[frame]
+			top,pc,openupval = fte.top(),fte.pc(),fte.upvals
+			-- update the old upval setters/getters
+			fte.top = function(a) if a~=nil then top=a end; return top end
+			fte.pc = function(a) if a~=nil then pc=a end; return pc end
+		else
+			-- fresh-baked frame
+			top,pc,openupval = 0,0,{}
+			if coroutine~=nil then
+				states[coroutine.running() or -1] = {
+					frame=frame,
+					upvals=openupval,
+					top=function(a) if a~=nil then top=a end; return top end,
+					pc=function(a) if a~=nil then pc=a end; return pc end
+				}
+			end
+			frame_to_extra[frame] = {
 				upvals=openupval,
 				top=function(a) if a~=nil then top=a end; return top end,
 				pc=function(a) if a~=nil then pc=a end; return pc end
 			}
 		end
+
+		if setup then return end
 
 		local function setobj(idx, val)
 			if idx > top then
@@ -1027,5 +1050,7 @@ return {
 	luaF_dispatch = luaF_dispatch,
 	luaU_undump = luaU_undump,
 	luaF_wrap = luaF_wrap,
-	get_state = get_state
+	luaV_execute = luaV_execute,
+	get_state = get_state,
+	get_state_from_frame = get_state_from_frame
 };
