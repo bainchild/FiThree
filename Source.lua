@@ -286,9 +286,31 @@ do
 				end
 			end
 
-			local function readfloat() -- I'll do this one eventually
-				readint() -- not exactly a priority
-				return 0; -- TODO
+			local function readfloat() -- should work, stolen from FiOne's float reading function
+				local f1,f2,f3,f4 = l_byte(chunk, position, position + 3);
+				position = position + 4;
+				if not specs.little then
+					f1,f2,f3,f4=f4,f3,f2,f1;
+				end
+				local sign = (-1) ^ bit.rshift(f4, 7)
+				local exp = bit.rshift(f3, 7) + bit.lshift(bit.band(f4, 0x7F), 1)
+				local frac = f1 + bit.lshift(f2, 8) + bit.lshift(bit.band(f3, 0x7F), 16)
+				local normal = 1
+				if exp == 0 then
+					if frac == 0 then
+						return sign * 0
+					else
+						normal = 0
+						exp = 1
+					end
+				elseif exp == 0x7F then
+					if frac == 0 then
+						return sign * (1 / 0)
+					else
+						return sign * (0 / 0)
+					end
+				end
+				return sign * 2 ^ (exp - 127) * (1 + normal / 2 ^ 23)
 			end
 
 			local function readdouble()
